@@ -67,6 +67,60 @@ jobs:
             fi
 
             chown -R builder:builder "$SDK" /home/builder/.android
+
+            # AGP detects installed components via package.xml metadata, which
+            # the raw zips do not contain (and sdkmanager cannot write in this
+            # container). Generate it for every platform/build-tools present.
+            write_platform_xml() {
+              local dir="$1" api="$2"
+              [ -d "$dir" ] || return 0
+              [ -f "$dir/package.xml" ] && return 0
+              cat > "$dir/package.xml" <<EOF
+<?xml version="1.0" encoding="utf-8"?>
+<ns2:repository xmlns:ns2="http://schemas.android.com/sdk/android/repositories/repository2/1">
+    <ns2:localPackage path="platforms;android-$api">
+        <ns2:type-details xsi:type="ns2:platformDetailsType" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+            <ns2:api-level>$api</ns2:api-level>
+            <ns2:codename></ns2:codename>
+            <ns2:layoutlib api="15"/>
+        </ns2:type-details>
+        <ns2:revision>
+            <ns2:major>1</ns2:major>
+        </ns2:revision>
+    </ns2:localPackage>
+</ns2:repository>
+EOF
+            }
+            write_buildtools_xml() {
+              local dir="$1" major="$2" minor="$3" micro="$4"
+              [ -d "$dir" ] || return 0
+              [ -f "$dir/package.xml" ] && return 0
+              cat > "$dir/package.xml" <<EOF
+<?xml version="1.0" encoding="utf-8"?>
+<ns2:repository xmlns:ns2="http://schemas.android.com/sdk/android/repositories/repository2/1">
+    <ns2:localPackage path="build-tools;$major.$minor.$micro">
+        <ns2:type-details xsi:type="ns2:buildToolDetailsType" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+            <ns2:revision>
+                <ns2:major>$major</ns2:major>
+                <ns2:minor>$minor</ns2:minor>
+                <ns2:micro>$micro</ns2:micro>
+            </ns2:revision>
+        </ns2:type-details>
+        <ns2:revision>
+            <ns2:major>$major</ns2:major>
+            <ns2:minor>$minor</ns2:minor>
+            <ns2:micro>$micro</ns2:micro>
+        </ns2:revision>
+    </ns2:localPackage>
+</ns2:repository>
+EOF
+            }
+            for api in 24 28 33 35; do
+              write_platform_xml "$SDK/platforms/android-$api" "$api"
+            done
+            write_buildtools_xml "$SDK/build-tools/33.0.1" 33 0 1
+            write_buildtools_xml "$SDK/build-tools/30.0.3" 30 0 3
+            chown -R builder:builder "$SDK"
             ls "$SDK/platforms" "$SDK/build-tools"
           '
 
