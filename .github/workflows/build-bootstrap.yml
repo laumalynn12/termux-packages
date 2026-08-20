@@ -37,7 +37,7 @@ jobs:
 
       - name: Pre-install extra Android SDK components
         run: |
-          ./scripts/run-docker.sh sudo -E bash -c '
+          TERMUX_DOCKER_EXEC_EXTRA_ARGS="--user root" ./scripts/run-docker.sh bash -c '
             set -e
             cd /home/builder/termux-packages
             export TERMUX_SCRIPTDIR=$PWD
@@ -66,7 +66,7 @@ jobs:
               rm -rf /tmp/build-tools-30 /tmp/build-tools-30.zip
             fi
 
-            chown -R builder:builder "$SDK"
+            chown -R builder:builder "$SDK" /home/builder/.android
             ls "$SDK/platforms" "$SDK/build-tools"
           '
 
