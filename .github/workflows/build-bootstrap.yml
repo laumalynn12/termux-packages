@@ -43,9 +43,8 @@ jobs:
           if [ -n "$ADD_PACKAGES" ]; then
             ARGS="$ARGS --add $ADD_PACKAGES"
           fi
-          ./scripts/run-docker.sh ./scripts/build-bootstraps.sh $ARGS &> build.log; rc=$?
-          tail -50 build.log
-          exit $rc
+          ./scripts/run-docker.sh ./scripts/build-bootstraps.sh $ARGS 2>&1 | tee build.log
+          exit ${PIPESTATUS[0]}
 
       - name: Inspect output
         run: |
