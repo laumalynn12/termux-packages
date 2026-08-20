@@ -42,15 +42,31 @@ jobs:
             cd /home/builder/termux-packages
             export TERMUX_SCRIPTDIR=$PWD
             . scripts/properties.sh
-            if [ -x "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" ]; then
-              SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
-            else
-              SDKMANAGER="$ANDROID_HOME/cmdline-tools/bin/sdkmanager"
-            fi
+            SDK="$ANDROID_HOME"
             mkdir -p "$HOME/.android"
             touch "$HOME/.android/repositories.cfg"
-            yes | "$SDKMANAGER" --sdk_root="$ANDROID_HOME" --licenses
-            yes | "$SDKMANAGER" --sdk_root="$ANDROID_HOME" "platforms;android-33" "build-tools;30.0.3"
+
+            if [ ! -d "$SDK/platforms/android-33" ]; then
+              echo "Installing platforms;android-33..."
+              curl -fL --retry 5 -o /tmp/platform-33.zip https://dl.google.com/android/repository/platform-33_r02.zip
+              unzip -q /tmp/platform-33.zip -d /tmp/platform-33
+              mkdir -p "$SDK/platforms"
+              inner=$(find /tmp/platform-33 -mindepth 1 -maxdepth 1 -type d | head -1)
+              mv "$inner" "$SDK/platforms/android-33"
+              rm -rf /tmp/platform-33 /tmp/platform-33.zip
+            fi
+
+            if [ ! -d "$SDK/build-tools/30.0.3" ]; then
+              echo "Installing build-tools;30.0.3..."
+              curl -fL --retry 5 -o /tmp/build-tools-30.zip https://dl.google.com/android/repository/build-tools_r30.0.3-linux.zip
+              unzip -q /tmp/build-tools-30.zip -d /tmp/build-tools-30
+              mkdir -p "$SDK/build-tools"
+              inner=$(find /tmp/build-tools-30 -mindepth 1 -maxdepth 1 -type d | head -1)
+              mv "$inner" "$SDK/build-tools/30.0.3"
+              rm -rf /tmp/build-tools-30 /tmp/build-tools-30.zip
+            fi
+
+            ls "$SDK/platforms" "$SDK/build-tools"
           '
 
       - name: Build bootstrap archive
