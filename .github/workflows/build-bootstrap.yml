@@ -1,0 +1,111 @@
+name: Build Bootstrap
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to publish the bootstrap archive to"
+        required: true
+        default: "bootstrap-androidide-v1"
+      add_packages:
+        description: "Extra comma-separated packages to bake into the bootstrap"
+        required: false
+        default: "openjdk-17,git"
+
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    permissions:
+      contents: read
+    runs-on: ubuntu-22.04
+    timeout-minutes: 360
+    steps:
+      - name: Clone repository
+        uses: actions/checkout@v7
+
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc \
+            /opt/hostedtoolcache/CodeQL /usr/local/share/boost "$AGENT_TOOLSDIRECTORY"
+          sudo apt-get clean
+          df -h /
+
+      - name: Build bootstrap archive
+        env:
+          ADD_PACKAGES: ${{ inputs.add_packages }}
+        run: |
+          ARGS="--architectures aarch64"
+          if [ -n "$ADD_PACKAGES" ]; then
+            ARGS="$ARGS --add $ADD_PACKAGES"
+          fi
+          ./scripts/run-docker.sh ./scripts/build-bootstraps.sh $ARGS &> build.log; rc=$?
+          tail -50 build.log
+          exit $rc
+
+      - name: Inspect output
+        run: |
+          ls -la *.zip
+          ls output/*.deb 2>/dev/null | wc -l
+
+      - name: Upload bootstrap artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: bootstrap-aarch64
+          path: "*.zip"
+          retention-days: 30
+
+      - name: Upload debs artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: debs-aarch64
+          path: "output/*.deb"
+          retention-days: 30
+
+  publish:
+    permissions:
+      contents: write
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v6
+        with:
+          merge-multiple: true
+          path: assets
+
+      - name: Generate checksums
+        working-directory: assets
+        run: sha256sum ./* > SHA256SUMS.txt
+
+      - name: Create release and upload assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          set -eu
+          cd assets
+          if ! gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release create "$TAG" --repo "$GITHUB_REPOSITORY" \
+              --title "AndroidIDE Termux bootstrap (aarch64)" \
+              --notes "Bootstrap archive and packages built from this repository via the 'Build Bootstrap' workflow. Prefix: /data/data/com.itsaky.androidide/files/usr"
+          fi
+          for f in *; do
+            for attempt in 1 2 3; do
+              if gh release upload "$TAG" "$f" --repo "$GITHUB_REPOSITORY" --clobber; then
+                break
+              fi
+              echo "Upload of $f failed (attempt $attempt), retrying..."
+              sleep 10
+              if [ "$attempt" = "3" ]; then
+                echo "[!] Giving up on $f"
+                exit 1
+              fi
+            done
+          done
+          echo "Published assets to release $TAG:"
+          ls -la
