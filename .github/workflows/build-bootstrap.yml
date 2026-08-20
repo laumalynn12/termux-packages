@@ -35,6 +35,24 @@ jobs:
           sudo apt-get clean
           df -h /
 
+      - name: Pre-install extra Android SDK components
+        run: |
+          ./scripts/run-docker.sh bash -c '
+            set -e
+            cd /home/builder/termux-packages
+            export TERMUX_SCRIPTDIR=$PWD
+            . scripts/properties.sh
+            if [ -x "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" ]; then
+              SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+            else
+              SDKMANAGER="$ANDROID_HOME/cmdline-tools/bin/sdkmanager"
+            fi
+            mkdir -p "$HOME/.android"
+            touch "$HOME/.android/repositories.cfg"
+            yes | "$SDKMANAGER" --sdk_root="$ANDROID_HOME" --licenses
+            yes | "$SDKMANAGER" --sdk_root="$ANDROID_HOME" "platforms;android-33" "build-tools;30.0.3"
+          '
+
       - name: Build bootstrap archive
         env:
           ADD_PACKAGES: ${{ inputs.add_packages }}
