@@ -37,14 +37,14 @@ jobs:
 
       - name: Pre-install extra Android SDK components
         run: |
-          ./scripts/run-docker.sh bash -c '
+          ./scripts/run-docker.sh sudo -E bash -c '
             set -e
             cd /home/builder/termux-packages
             export TERMUX_SCRIPTDIR=$PWD
             . scripts/properties.sh
             SDK="$ANDROID_HOME"
-            mkdir -p "$HOME/.android"
-            touch "$HOME/.android/repositories.cfg"
+            mkdir -p /home/builder/.android
+            touch /home/builder/.android/repositories.cfg
 
             if [ ! -d "$SDK/platforms/android-33" ]; then
               echo "Installing platforms;android-33..."
@@ -66,6 +66,7 @@ jobs:
               rm -rf /tmp/build-tools-30 /tmp/build-tools-30.zip
             fi
 
+            chown -R builder:builder "$SDK"
             ls "$SDK/platforms" "$SDK/build-tools"
           '
 
