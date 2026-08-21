@@ -7,7 +7,9 @@ TERMUX_PKG_SRCURL="https://github.com/openjdk/jdk21u/archive/refs/tags/jdk-${TER
 TERMUX_PKG_SHA256=1efd38fa2729d32cdf0ed4c9197c31ee31890ad1b7bff82984992e0c2c67c72b
 TERMUX_PKG_AUTO_UPDATE=true
 TERMUX_PKG_UPDATE_VERSION_REGEXP='21\.\d+\.\d+(?=-ga)'
-TERMUX_PKG_DEPENDS="libandroid-shmem, libandroid-spawn, libiconv, libjpeg-turbo, zlib, littlecms, alsa-plugins"
+# alsa-plugins (audio) intentionally dropped: not needed for IDE builds and it
+# pulls pulseaudio whose dependency ordering breaks buildorder.py.
+TERMUX_PKG_DEPENDS="libandroid-shmem, libandroid-spawn, libiconv, libjpeg-turbo, zlib, littlecms"
 TERMUX_PKG_BUILD_DEPENDS="cups, fontconfig, libxrandr, libxt, xorgproto, alsa-lib"
 # openjdk-21-x is recommended because X11 separation is still very experimental.
 TERMUX_PKG_RECOMMENDS="ca-certificates-java, openjdk-21-x, resolv-conf"

@@ -1,0 +1,100 @@
+name: Check Source URLs
+
+# Verifies that every source tarball URL needed by the bootstrap package set
+# (plus transitive dependencies) is still downloadable, so dead upstream
+# links are caught before spending hours in the bootstrap build.
+
+on:
+  workflow_dispatch:
+    inputs:
+      add_packages:
+        description: "Extra comma-separated packages (same as Build Bootstrap)"
+        required: false
+        default: "openjdk-17,git"
+
+permissions: {}
+
+jobs:
+  check:
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Clone repository
+        uses: actions/checkout@v7
+
+      - name: Collect packages and verify source URLs
+        env:
+          ADD_PACKAGES: ${{ inputs.add_packages }}
+        run: |
+          set -u
+          # Same core list as scripts/build-bootstraps.sh.
+          CORE=$(grep -oE 'PACKAGES\+=\("[^"]+"\)' scripts/build-bootstraps.sh | sed -E 's/PACKAGES\+=\("([^"]+)"\)/\1/')
+          EXTRA=$(echo "${ADD_PACKAGES:-}" | tr ',' ' ')
+          TOP="$CORE $EXTRA"
+
+          # Full transitive closure via buildorder.py.
+          ALL=""
+          for pkg in $TOP; do
+            if [ ! -d "packages/$pkg" ] && [ ! -d "root-packages/$pkg" ] && [ ! -d "x11-packages/$pkg" ]; then
+              echo "MISSING RECIPE: $pkg"
+              continue
+            fi
+            dir=""
+            for d in packages root-packages x11-packages; do
+              [ -d "$d/$pkg" ] && dir="$d/$pkg" && break
+            done
+            ORDER=$(python3 scripts/buildorder.py "$dir" packages root-packages x11-packages 2>/dev/null | awk '{print $1}')
+            ALL="$ALL $ORDER $pkg"
+          done
+          ALL=$(echo "$ALL" | tr ' ' '\n' | grep -v '^$' | sort -u)
+          echo "Checking $(echo "$ALL" | wc -l) unique packages..."
+
+          FAILED=""
+          SKIPPED=""
+          CHECKED=0
+          for pkg in $ALL; do
+            dir=""
+            for d in packages root-packages x11-packages; do
+              [ -d "$d/$pkg" ] && dir="$d/$pkg" && break
+            done
+            [ -z "$dir" ] && continue
+            [ -f "$dir/build.sh" ] || continue
+
+            # Extract version + srcurl without executing the recipe.
+            VERSION=$(sed -n 's/^TERMUX_PKG_VERSION=//p' "$dir/build.sh" | head -1 | tr -d '"'"'" | head -c 100)
+            URLS=$(sed -n 's/^TERMUX_PKG_SRCURL=//p' "$dir/build.sh" | tr -d '"'"'")
+            [ -z "$URLS" ] && continue
+
+            for raw in $URLS; do
+              url=$(echo "$raw" | sed -E "s/\\$\\{?TERMUX_PKG_VERSION\\}?/$VERSION/g; s/\\$\\{?TERMUX_PKG_NAME\\}?/$pkg/g")
+              case "$url" in
+                *'$'*) SKIPPED="$SKIPPED\n  $pkg: unresolved $url"; continue;;
+              esac
+              CHECKED=$((CHECKED+1))
+              # HEAD first; fall back to a ranged GET for hosts that reject HEAD.
+              code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 -I "$url" 2>/dev/null || echo 000)
+              if [ "$code" = "405" ] || [ "$code" = "403" ] || [ "$code" = "000" ]; then
+                code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 60 -r 0-0 -L "$url" 2>/dev/null || echo 000)
+              fi
+              if [ "$code" != "200" ] && [ "$code" != "206" ]; then
+                echo "BAD [$code] $pkg: $url"
+                FAILED="$FAILED\n  $pkg: $url (HTTP $code)"
+              fi
+            done
+          done
+
+          echo ""
+          echo "Checked $CHECKED source URL(s)."
+          if [ -n "$SKIPPED" ]; then
+            echo "Unresolved variables (manual check needed):"
+            printf "%b\n" "$SKIPPED"
+          fi
+          if [ -n "$FAILED" ]; then
+            echo ""
+            echo "Dead source URLs found:"
+            printf "%b\n" "$FAILED"
+            exit 1
+          fi
+          echo "All source URLs are reachable."
